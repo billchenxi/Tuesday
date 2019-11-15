@@ -11,6 +11,7 @@ model.
 """
 
 import io
+import os
 import nltk
 import datetime
 import pdfminer
@@ -52,19 +53,28 @@ class Features_Generation:
         self.pdf_path = pdf_path
         self.page_list = page_list
         if convert_to_text:
-            self.raw_text = self._convert_pdf_to_txt(self.pdf_path, self.page_list)
-            self.text = " ".join(self.raw_text)
+            self.raw_text, self.content = self._convert_pdf_to_txt(self.pdf_path, self.page_list)
+            
+            self.raw_text = re.sub(r'\n', '', self.raw_text)
+            self.content_str = ' '.join(self.content)
 
-            self.tokenize_words = nltk.word_tokenize(self.text)
-            self.unique_tokenize_words = sorted(set(self.tokens))
+            self.tokenize_words = nltk.word_tokenize(self.raw_text)
+            self.raw_words = self.content_str.split(' ')
+            self.unique_tokenize_words = sorted(set(self.raw_words))
 
-            self.tokenize_sentences = nltk.sent_tokenize(self.text)
+            self.tokenize_sentences = nltk.sent_tokenize(self.raw_text)
 
         self.features = self._extract_features(self.pdf_path, self.page_list)
 
     def summary(self):
+        print(f'File name: {os.path.basename(self.pdf_path)}')
+        print(f'File location: {os.path.dirname(self.pdf_path)}')
         print(f'Word token count: {len(self.tokenize_words)}')
+        print(f'Unique word token count: {len(self.unique_tokenize_words)}')
         print(f'Sentence token count: {len(self.tokenize_sentences)}')
+        # print(self.tokenize_sentences)
+        # print(self.tokenize_sentences[0])
+        # print(self.tokenize_sentences[0].istitle())
 
     def _convert_pdf_to_txt(self, pdf_path, page_list, codec='utf-8', password="",\
         maxpages=0, caching=True):
@@ -93,11 +103,14 @@ class Features_Generation:
             for page in pages_objs_list:
                 interpreter.process_page(page)
 
-        text = retstr.getvalue().split('\n')
-        test = [x.strip() for x in text if x.strip()]
+        text = retstr.getvalue()
+
+        content = text.split('\n')
+        content = [x.strip() for x in content if x.strip()]
+
         device.close()
         retstr.close()
-        return test
+        return text, content
 
     def _extract_features(self, pdf_path, page_list, password=""):
         """This function will parse pdf file and extract features.
@@ -191,9 +204,8 @@ class Features_Generation:
                     self.__extract_textalign(obj.x0)
                 attributes_dict["stopwordcount"], attributes_dict["bulletpoint"] = \
                     self.__extract_stopword_bulletpoint(obj)
-                attributes_dict["currency"], \
-                    attributes_dict["data_list"] \
-                        = self.__extract_currency_date(obj)
+                attributes_dict["currency"] = self.__extract_currency(obj)
+            
             return attributes_dict
 
     def __extract_font_style(self, obj):
@@ -275,7 +287,7 @@ class Features_Generation:
 
         return stopwordcount, bulletpoint
 
-    def __extract_currency_date(self, obj):
+    def __extract_currency(self, obj):
         """This function will extract currency values
 
         Args:
@@ -311,42 +323,19 @@ class Features_Generation:
         currency_tags = re.compile(valuta_with_num)
 
         currency_text_list = []
-        date_list = []
+        # date_list = []
 
         for textline in obj:
             s = str(textline.get_text()).rstrip()
             currency_match = currency_tags.findall(s)
             if currency_match:
                 currency_text_list.append(currency_match)
-            # try:
-            #     temp = dateutil.parser.parse(s, fuzzy=True)
-            #     date_list.append({"year": temp.year, "month": temp.month, \
-            #          "day": temp.day})
-            # except:
-            #     date_list.append(None)
 
-            # date_matches = datefinder.find_dates(s)
-            # for date_ in date_matches:
-            #     date_list.append(str(date_))
-
-            re_date = r'(Jan(uary)?|Feb(ruary)?|Mar(ch)?|Apr(il)?|May|Jun(e)?|Jul(y)?|Aug(ust)?|Sep(tember)?|Oct(ober)?|Nov(ember)?|Dec(ember)?)\s+\d{1,2},\s+\d{4}'
-            date_match = re.match(re_date, s)
-            if date_match != None:
-                date_list.append(date_match.group())
-
-
-            # effective_date_flags = ['effective date', 
-            #                         'dated and effect as of the']
-            # if any([True for elem in effective_date_flags if elem in s.lower()]):
-            # date_matches = datefinder.find_dates(s)
-            # for date_ in date_matches:
-            #     effective_date_list.append(str(date_))
-
-
-        return currency_text_list, date_list
+        return currency_text_list
     
-    def write_json(self, json_output_path):
-        with open(json_output_path, 'w') as fp:
+    def write_json(self):
+        with open(os.path.join(os.path.dirname(self.pdf_path), \
+            os.path.splitext(self.pdf_path)[0]+'.json'), 'w') as fp:
             json.dump(self.features, fp, indent=4, sort_keys=True)
 
 
@@ -356,8 +345,8 @@ if __name__ == '__main__':
         from PDF')
     arguments_parser.add_argument('-i', '--input', required=True,\
         help='path of input PDF file', type=str)
-    arguments_parser.add_argument('-o', '--output', required=True,\
-        help='path of output JSON file', type=str)
+    # arguments_parser.add_argument('-o', '--output', required=False,\
+    #     help='path of output JSON file', type=str)
 
     ret = arguments_parser.parse_known_args()
     options = ret[0]
@@ -365,5 +354,6 @@ if __name__ == '__main__':
         raise ValueError(f'unknow argument: \
             {arguments_parser.parse_known_args()[1]}')
     
-    feature_class = Features_Generation(options.input)
-    feature_class.write_json(options.output)
+    feature_class = Features_Generation(options.input, page_list=[0,-1], convert_to_text=True)
+    feature_class.summary()
+    feature_class.write_json()
