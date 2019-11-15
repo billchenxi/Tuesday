@@ -3,7 +3,8 @@
 *.svg
 *.json
 *.ai
-.DS_Stone
+*.pyc
+**/.DS_Store
 
 Tuesday.pdf
 temp.py
