@@ -19,6 +19,7 @@ import datefinder
 import json
 import re
 import argparse
+import string
 
 from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
 from pdfminer.converter import TextConverter
@@ -30,6 +31,7 @@ from pdfminer.pdfdocument import PDFDocument
 from pdfminer.pdfdevice import PDFDevice
 from pdfminer.layout import LAParams, LTTextBox, LTTextLine
 from nltk.corpus import stopwords
+from pprint import pprint
 
 
 class Features_Generation:
@@ -55,13 +57,13 @@ class Features_Generation:
         if convert_to_text:
             self.raw_text, self.content = self._convert_pdf_to_txt(self.pdf_path, self.page_list)
             
-            self.raw_text = re.sub(r'\n', '', self.raw_text)
-            self.content_str = ' '.join(self.content)
+            self.raw_text = re.sub(r'\n|\f', '', self.raw_text)
+            self.clean_text = re.sub(r'\n|“|”', '', self.raw_text.translate(str.maketrans('', '', string.punctuation))) # remove all the punc
+            # self.content_str = ' '.join(self.content).translate(str.maketrans('', '', string.punctuation))
 
-            self.tokenize_words = nltk.word_tokenize(self.raw_text)
-            self.raw_words = self.content_str.split(' ')
-            self.unique_tokenize_words = sorted(set(self.raw_words))
-
+            self.tokenize_words = nltk.word_tokenize(self.clean_text) 
+            self.tokenize_raw_words = nltk.word_tokenize(self.raw_text)
+            # self.unique_tokenize_words = sorted(set(self.raw_words))
             self.tokenize_sentences = nltk.sent_tokenize(self.raw_text)
 
         self.features = self._extract_features(self.pdf_path, self.page_list)
@@ -70,10 +72,10 @@ class Features_Generation:
         print(f'File name: {os.path.basename(self.pdf_path)}')
         print(f'File location: {os.path.dirname(self.pdf_path)}')
         print(f'Word token count: {len(self.tokenize_words)}')
-        print(f'Unique word token count: {len(self.unique_tokenize_words)}')
+        # print(f'Unique word token count: {len(self.unique_tokenize_words)}')
         print(f'Sentence token count: {len(self.tokenize_sentences)}')
-        # print(self.tokenize_sentences)
-        # print(self.tokenize_sentences[0])
+        # print(self.tokenize_raw_words)
+        print(nltk.word_tokenize("Ed J. Thomas"))
         # print(self.tokenize_sentences[0].istitle())
 
     def _convert_pdf_to_txt(self, pdf_path, page_list, codec='utf-8', password="",\
