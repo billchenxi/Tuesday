@@ -1,2 +1,9 @@
 *.txt
+*.png
+*.svg
+*.json
+*.ai
 .DS_Stone
+
+Tuesday.pdf
+temp.py
