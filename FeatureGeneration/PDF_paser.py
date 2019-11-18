@@ -55,12 +55,13 @@ class Features_Generation:
         self.pdf_path = pdf_path
         self.page_list = page_list
         if convert_to_text:
-            self.raw_text, self.content = self._convert_pdf_to_txt(self.pdf_path, self.page_list)
+            self.original_text, self.content = self._convert_pdf_to_txt(self.pdf_path, self.page_list)
             
-            self.raw_text = re.sub(r'\n|\f', '', self.raw_text)
+            self.raw_text = re.sub(r'\n|\f', '', self.original_text)
+            self.original_text = re.sub(r'“|”', '', self.original_text)
             self.clean_text = re.sub(r'\n|“|”', '', self.raw_text.translate(str.maketrans('', '', string.punctuation))) # remove all the punc
             # self.content_str = ' '.join(self.content).translate(str.maketrans('', '', string.punctuation))
-
+            self.tokenize_original = self.original_text.split()
             self.tokenize_words = nltk.word_tokenize(self.clean_text) 
             self.tokenize_raw_words = nltk.word_tokenize(self.raw_text)
             # self.unique_tokenize_words = sorted(set(self.raw_words))
@@ -71,12 +72,14 @@ class Features_Generation:
     def summary(self):
         print(f'File name: {os.path.basename(self.pdf_path)}')
         print(f'File location: {os.path.dirname(self.pdf_path)}')
-        print(f'Word token count: {len(self.tokenize_words)}')
-        # print(f'Unique word token count: {len(self.unique_tokenize_words)}')
+        print(f'Clean word token count: {len(self.tokenize_words)}')
+        print(f'Original word token count (clean with punc): {len(self.tokenize_original)}')
+        print(f'Raw word token count (punc as seperate word): {len(self.tokenize_raw_words)}')
         print(f'Sentence token count: {len(self.tokenize_sentences)}')
-        # print(self.tokenize_raw_words)
-        print(nltk.word_tokenize("Ed J. Thomas"))
-        # print(self.tokenize_sentences[0].istitle())
+        # print(self.original_text)
+        print(self.tokenize_original)
+        # print(nltk.word_tokenize("Ed J. Thomas")) # return: ['Ed', 'J.', 'Thomas']
+        # print(self.tokenize_sentences)
 
     def _convert_pdf_to_txt(self, pdf_path, page_list, codec='utf-8', password="",\
         maxpages=0, caching=True):
@@ -106,13 +109,14 @@ class Features_Generation:
                 interpreter.process_page(page)
 
         text = retstr.getvalue()
+        orig_text = text
 
         content = text.split('\n')
         content = [x.strip() for x in content if x.strip()]
 
         device.close()
         retstr.close()
-        return text, content
+        return orig_text, content
 
     def _extract_features(self, pdf_path, page_list, password=""):
         """This function will parse pdf file and extract features.

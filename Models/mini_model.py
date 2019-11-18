@@ -41,6 +41,8 @@ from pprint import pprint
 
 @dataclasses.dataclass(init=True)
 class Data:
+    eng_word = set(nltk.corpus.words.words())
+
     trigger_terms = ["( The","( the","("]
 
     defined_terms = ["Company", "Buyer", "Seller", "Sellers", 
@@ -56,11 +58,11 @@ class Data:
                     "a California corporation"]
 
     non_info_list = ["Art.", "Art", "Article", "Sec.", "Sect.", "Section", 
-                    "Sec", "Part", "Exhibit"]
+                    "Sec", "Part", "Exhibit", "Name:", "name:"]
 
     punc = [","]
 
-    frag = ["Inc.", "INC.", "Incorp.", "INCORP.", "LLC", "N.A.", "L.L.C.", 
+    biz_frag = ["Inc.", "INC.", "Incorp.", "INCORP.", "LLC", "N.A.", "L.L.C.", 
             "LP", "L.P.", "B.V.", "BV", "N.V.", "NV", "Corp.", "CORP."]
     
     effect_date_signals = ["Effective Date", "Dated", "dated", 
@@ -78,17 +80,24 @@ class Model(Data):
             to_df (bool): whether to convert results to data frame for 
                 generating csv.
         """
-        super().__init__()
+        super(Model).__init__()
         self.pdf_input_path = pdf_input_path
         self.json_output_path = json_output_path
         self.to_df = to_df
         self.features_obj = Features_Generation(pdf_path=self.pdf_input_path,\
-            page_list=[0, -1], convert_to_text=True)
+            page_list=None, convert_to_text=True)
         self.tokenize_words = self.features_obj.tokenize_words
         self.tokenize_raw_words = self.features_obj.tokenize_raw_words
+        self.tokenize_original = self.features_obj.tokenize_original
         self.tokenize_sentences = self.features_obj.tokenize_sentences
         self.features = self.features_obj.features
+
         self.title = ' '.join(self.extract_title())
+        self.clean_title = " ".join(w for w in nltk.wordpunct_tokenize(self.title) \
+            if w.lower() in self.eng_word or not w.isalpha())
+
+        self.parties, self.persons = self.extract_parties(self.tokenize_original)
+        # self.effective_date = 
         # self.text = " ".join(self.features_obj.text)
         # self.results_300 = self.parsing_content()
 
@@ -143,30 +152,171 @@ class Model(Data):
                     title_list.append(s)
         return title_list
 
-        def extract_parties(self):
-            parties_list = []
-            for indx, word in enumerate(self.tokenize_raw_words):
-                whether_person_name = _whether_person_name(indx)
-                # If it's a person's name
-                if  whether_person_name != False:
-                    parties_list.append(whether_person_name)
 
-        def _whether_person_name(self, indx):
-            [first_name, second_name, third_name, forth_name] = self.tokenize_raw_words[indx:indx+4]
+
+    def extract_effective_dates(self, tokens, indx):
+        # for sentence in self.tokenize_sentences:
+            # if any()
+        # return dates
+        pass
+
+    def clean_party(self, party_name):
+        party_name = party_name.replace("_", "")
+        return party_name
+
+    def preceding_phrase(self, tokens, indx, phrases):
+        for phrase in phrases:
+            phrase_tokens = phrase.split()
+            i = 1
+            pre_words = []
+            while i <= len(phrase_tokens):
+                pre_words.insert(0, tokens[indx - i])
+                i += 1
+            if phrase_tokens == pre_words:
+                return True
+            else:
+                return False
+    
+    def looks_like_party_name(self, tokens, indx):
+        if tokens[indx].istitle() or tokens[indx].isupper():
+            return True
+        else:
+            return False
+    
+    def capture_party_name(self, tokens, indx, direction):
+        party_name = tokens[indx]
+
+        if direction == "right" and (party_name.istitle() or party_name.isupper()):
+            i = 1
+            while tokens[indx + i].isupper():
+                party_name += " " + tokens[indx + i]
+                i += 1
+            while tokens[indx + i][-1] in self.punc:
+                x = i + 1
+                if tokens[indx + x] in self.biz_frag:
+                    party_name += tokens[indx + i] + " " + tokens[indx + x]
+                i += 1  
+            return party_name
+                
+        if direction == "left":
+            i = 1
+            while tokens[indx - i].isupper() or tokens[indx - i] in self.biz_frag or \
+                    tokens[indx - i][-1] in self.punc:            
+                if tokens[indx - i].isupper() or tokens[indx - i] in self.biz_frag:
+                    party_name = tokens[indx - i] + " " + party_name
+                    i += 1
+                if tokens[indx - i][-1] in self.punc:
+                    x = i + 1
+                    party_name = tokens[indx - x] + tokens[indx - i] + " " + party_name
+                    i += 2
+            return party_name
+
+    def extract_parties(self, tokens):
+        parties_list = []
+        persons_list = []
+        for indx, token in enumerate(tokens):
+            # Extract the person's name
+            party_name, _ = self._whether_person_name(tokens, indx)
+            if party_name != None:
+                party_name = self.clean_party(party_name)
+                party_name.encode('utf-8')
+                persons_list.append(party_name)  
+
+            if self.preceding_phrase(tokens, indx, ["among", "between"]) and self._whether_orgnization_name(tokens, indx):
+                print('yes')
+                party_name = self.capture_party_name(tokens, indx, "right")
+                party_name = clean_party(party_name)
+                party_name.encode('utf-8')
+                parties_list.append(party_name)  
+            
+            if self.preceding_phrase(tokens,indx,["(Exact name of"]) and tokens[indx] == "registrant" and _whether_orgnization_name(tokens, indx - 5):
+                print('yes')
+                party_name = self.capture_party_name(tokens, indx - 5, "left")
+                party_name = self.clean_party(party_name)
+                party_name.encode('utf-8')
+                if party_name.upper() not in (party.upper() for party in parties_list):
+                    parties_list.append(party_name)
+            
+            if self.preceding_phrase(tokens, indx, ['(The']) and tokens[indx] == "Company" and self.subsequent_phrase(tokens,indx,[')'],1) and looks_like_party_name(tokens, indx - 3):
+                party_name = self.capture_party_name(tokens, indx - 3, "left")
+                party_name = self.clean_party(party_name)
+                party_name.encode('utf-8')
+                if party_name.upper() not in (party.upper() for party in parties_list):
+                    parties_list.append(party_name)
+
+            if (self.preceding_phrase(tokens,indx,['(The']) or self.preceding_phrase(tokens,indx,['(the']) or self.preceding_phrase(tokens,indx,['('])) and tokens[indx] in self.defined_terms:
+                print('yes')
+                if self.preceding_phrase(tokens,indx - 2, self.known_org):
+                    party_name = self.capture_party_name(tokens, indx - 5, "left")
+                    party_name = self.clean_party(party_name)
+                    party_name.encode('utf-8')
+                    if party_name.upper() not in (party.upper() for party in parties_list):
+                        parties_list.append(party_name)
+                elif self.looks_like_party_name(tokens,indx - 3):
+                    party_name = self.capture_party_name(tokens, indx - 3, "left")
+                    party_name = self.clean_party(party_name)
+                    party_name.encode('utf-8')
+                    if party_name.upper() not in (party.upper() for party in parties_list):
+                        parties_list.append(party_name)
+                
+        return list(set(parties_list)), list(set(persons_list))
+    
+    def preceding_phrase(self, tokens, indx, phrases):
+        for phrase in phrases:
+            phrase_tokens = phrase.split()
+            i = 1
+            pre_words = []
+            while i <= len(phrase_tokens):
+                pre_words.insert(0, tokens[ indx - i])
+                i += 1
+            if phrase_tokens == pre_words:
+                return True
+            else:
+                return False
+
+
+    def _check_trigger_word(self, tokens, indx, trigger_words, direction=-1, step=1):
+        result = None
+        if direction == -1:
+            for trigger in trigger_words:
+                trigger_tokens = nltk.word_tokenize(trigger)
+                target_tokens = tokens[(indx+direction*len(trigger_tokens)):indx]
+
+                if trigger_tokens == target_tokens:
+                    result = True
+                else:
+                    result = False
+        return result
+
+    def _whether_orgnization_name(self, tokens, indx):
+        word = tokens[indx]
+        if word.isupper() or word.istitle():
+            return True
+        else:
+            return False
+
+    def _whether_person_name(self, tokens, indx):
+        try:
+            first_name, second_name, third_name, forth_name = tokens[indx], tokens[indx+1], tokens[indx+2], tokens[indx+3]
+
             if (first_name.istitle() or first_name.isupper()) and \
                 (forth_name.istitle() or forth_name.isupper()) and \
-                (len(second_name)==1) and third_name=='.' and \
+                (len(second_name)==1 and second_name.isalpha()) and third_name=='.' and \
                 first_name not in self.non_info_list:
-                return ' '.join([first_name, second_name, third_name, forth_name])
+                return ' '.join([first_name, second_name, third_name, forth_name]), indx + 5
 
             elif (first_name.istitle() or first_name.isupper()) and \
                 (third_name.istitle() or third_name.isupper()) and \
-                (len(second_name)==2) and second_name[1]=='.' and \
+                (len(second_name)==2 and  second_name[0].isalpha()) and second_name[1]=='.' and \
                 first_name not in self.non_info_list:
-                return ' '.join([first_name, second_name, third_name])
-            
+                return ' '.join([first_name, second_name, third_name]), indx + 4
             else:
-                return False
+                return None, indx
+        except: 
+            return None, indx
+        
+        
+        
         
 
                 
@@ -180,14 +330,6 @@ class Model(Data):
 
         # return model_300_output
 
-    def extract_parties(self):
-        """ Read in textline and extract names of parties basing on predefined
-        rules
-
-
-        """
-        # self.parties
-        pass
 
     def write_json_output(self, output_dict):
         with open(self.json_output_path, 'w') as fp:
@@ -208,7 +350,9 @@ if __name__ == '__main__':
         raise ValueError(f'unknow argument: \
             {arguments_parser.parse_known_args()[1]}')
     pdf_parser = Model(options.input)
-    print(pdf_parser.title)
+    print('(the' in pdf_parser.tokenize_original)
+    print(pdf_parser.tokenize_sentences)
+    print(pdf_parser.parties, pdf_parser.persons)
 
 
 
