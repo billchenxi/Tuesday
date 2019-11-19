@@ -45,13 +45,17 @@ class Data:
 
     # trigger_terms = ["(The","(the","("]
 
-    # defined_terms = ["Company", "Buyer", "Seller", "Sellers", 
-    #                 "Purchaser", "Parent", "Guarantor", "Lender", 
-    #                 "Borrower", "Lessor", "Lessee", "Landlord", 
-    #                 "Tenant", "Creditor", "Contractor", "Customer",
-    #                 "Indemnitee", "Employer", "Employee", "Bank",
-    #                 "Trustee", "Supplier", "Licensee", "Licensor",
-    #                 "Investor", "Debtor"]
+    defined_terms = ["Company", "Companies", "Buyer", "Buyers", "Seller", "Sellers",
+                    "Purchaser", "Purchasers", "Parent", "Parents", "Guarantor",
+                    "Guarantors", "Lender", "Lenders", "Borrower", "Borrowers",
+                    "Lessor", "Lessors", "Lessee", "Lessees", "Landlord", "Landlords",
+                    "Tenant", "Tenants", "Creditor", "Creditors", "Contractor",
+                    "Contractors", "Customer", "Customers", 
+                    "Indemnitee", "Indemnitees", "Employer", "Employers",
+                    "Employee", "Employees", "Bank", "Banks",
+                    "Trustee", "Trustees", "Supplier", "Suppliers", "Licensee",
+                    "Licensees", "Licensor", "Licensors", "Investors", "Investor",
+                    "Debtor", "Debtors"]
                     
     # known_org     = ["a Delaware corporation", "a Kansas corporation", 
     #                 "an Arizona corporation", "an Illinois corporation",
@@ -62,7 +66,7 @@ class Data:
     
     effect_date_signals = ["Effective Date", "Dated", "dated", 
             "effective as of", "Effective as of", "effective",
-            "entered into as of", "Entered into as of", "as of"]
+            "entered into as of", "Entered into as of", "entered into as of", "as of"]
 
 
 class Model(Data):
@@ -80,7 +84,7 @@ class Model(Data):
         self.json_output_path = json_output_path
         self.to_df = to_df
         self.features_obj = Features_Generation(pdf_path=self.pdf_input_path,\
-            page_list=[0,1,2,3,4,-5,-4,-3,-2,-1], convert_to_text=True)
+            page_list=None, convert_to_text=True)
         self.raw_text = self.features_obj.raw_text
         self.tokenize_words = self.features_obj.tokenize_words
         self.tokenize_raw_words = self.features_obj.tokenize_raw_words
@@ -92,9 +96,9 @@ class Model(Data):
         self.clean_title = " ".join(w for w in nltk.wordpunct_tokenize(self.title) \
             if w.lower() in self.eng_word or not w.isalpha())
 
-        self.parties, self.persons = self.extract_parties(self.tokenize_original)
-        # self.effective_date = 
-        # self.text = " ".join(self.features_obj.text)
+        self.parties = self.extract_parties(self.raw_text)
+        self.persons = self.extract_persons(self.tokenize_original)
+        self.effective_dates = self.extract_effective_dates(self.tokenize_sentences)
         # self.results_300 = self.parsing_content()
 
     @property
@@ -150,14 +154,16 @@ class Model(Data):
 
 
 
-    def extract_effective_dates(self, tokens, indx):
-        # for sentence in self.tokenize_sentences:
-            # if any()
-        # return dates
-        pass
+    def extract_effective_dates(self, tokenize_sentences):
+        effective_date_list = []
+        match_date = r'(?:Jan|January|Feb|February|Mar|March|Apr|April|May|Jun|June|Jul|July|Aug|August|Sep|September|Oct|October|Nov|November|Dec|December)\s*(?:\d{1,2}),\s*(?:19{2}\d|2\d{3})'
+        
+        for sentence in tokenize_sentences:
+            if any([True for signal in self.effect_date_signals if signal in sentence]):
+                effective_date_list.extend(re.findall(match_date, sentence))
+        return list(set(effective_date_list))
 
-    def extract_parties(self, tokens):
-        parties_list = []
+    def extract_persons(self, tokens):
         persons_list = []
         for indx, token in enumerate(tokens):
             # Extract the person's name
@@ -165,14 +171,33 @@ class Model(Data):
             if party_name != None:
                 party_name.encode('utf-8')
                 persons_list.append(party_name)  
+        return list(set(persons_list))
 
-        match_1 = r'([A-Z][a-z]+\s?|\,?)+?\s*(and\s*[A-Z][a-z]+)?(, \bL\.?L\.?C\.?\b|\bL\.?P\.?\b|\bB\.?V\.?\b|\bN\.?V\.?\b|\bInc.\b|\bINC.\b|\bIncorp.\b|\bINCORP.\b|\bN\.A\.\b|\bCorp.\b\bCORP.\b)'
+    def extract_parties(self, raw_text):
+        parties_list = []
+
+        match_1 = r'([A-Z][a-z]+\s?|\,?)+?\s*(and\s*[A-Z][a-z]+)?(, \bL\.?L\.?C\.?\b|\bL\.?P\.?\b|\bB\.?V\.?\b|\bN\.?V\.?\b|\bInc.\b|\bINC.\b|\bIncorp.\b|\bINCORP.\b|\bN\.A\.\b|\bCorp.\b|\bCORP.\b)'
         match_2 = r'([A-Z][a-z]+\s?|\,?)+?\s*(and\s*[A-Z][a-z]+)?(\s+\bCorporation\b|\bCompany\b|\bBank\b)'
 
-        parties_list.extend(["".join(x) for x in re.findall(match_1, self.raw_text)])
-        parties_list.extend(["".join(x) for x in re.findall(match_2, self.raw_text)])
+        parties_list.extend(["".join(x) for x in re.findall(match_1, raw_text)])
+        parties_list.extend(["".join(x) for x in re.findall(match_2, raw_text)])
         
-        return list(set(parties_list)), list(set(persons_list))
+        final_parties_list = []
+        problem_list = ['Trust Company', 'Growth Company', 'Matrix  Corporation', 'Trust Company', 'Investment Company', 'Public Company', 'Investment Company']
+        for party in list(set(parties_list)):
+            condition_1 = (party.strip() not in problem_list)
+            clean_party = party.replace(',', ' ').strip().split()
+            condition_2 = (len(clean_party) > 1)
+            print(condition_2)
+            if condition_2 and (clean_party[0] in ['The', 'Each']):
+                condition_3 = (clean_party[1] not in self.defined_terms)
+            else:
+                condition_3 = True
+        
+            if all([condition_1, condition_2, condition_3]):
+                final_parties_list.append(party)
+
+        return final_parties_list
 
     def _whether_person_name(self, tokens, indx):
         try:
@@ -225,7 +250,7 @@ if __name__ == '__main__':
             {arguments_parser.parse_known_args()[1]}')
     pdf_parser = Model(options.input)
     # print('(the' in pdf_parser.tokenize_original)
-    print(pdf_parser.parties, pdf_parser.persons)
+    print(pdf_parser.parties, pdf_parser.persons, pdf_parser.effective_dates)
     # with open("sample.txt", "w") as text_file:
     #     text_file.write(pdf_parser.raw_text)
 
