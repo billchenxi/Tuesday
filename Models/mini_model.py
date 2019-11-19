@@ -43,27 +43,22 @@ from pprint import pprint
 class Data:
     eng_word = set(nltk.corpus.words.words())
 
-    trigger_terms = ["( The","( the","("]
+    # trigger_terms = ["(The","(the","("]
 
-    defined_terms = ["Company", "Buyer", "Seller", "Sellers", 
-                    "Purchaser", "Parent", "Guarantor", "Lender", 
-                    "Borrower", "Lessor", "Lessee", "Landlord", 
-                    "Tenant", "Creditor", "Contractor", "Customer",
-                    "Indemnitee", "Employer", "Employee", "Bank",
-                    "Trustee", "Supplier", "Licensee", "Licensor",
-                    "Investor", "Debtor"]
+    # defined_terms = ["Company", "Buyer", "Seller", "Sellers", 
+    #                 "Purchaser", "Parent", "Guarantor", "Lender", 
+    #                 "Borrower", "Lessor", "Lessee", "Landlord", 
+    #                 "Tenant", "Creditor", "Contractor", "Customer",
+    #                 "Indemnitee", "Employer", "Employee", "Bank",
+    #                 "Trustee", "Supplier", "Licensee", "Licensor",
+    #                 "Investor", "Debtor"]
                     
-    known_org     = ["a Delaware corporation", "a Kansas corporation", 
-                    "an Arizona corporation", "an Illinois corporation",
-                    "a California corporation"]
+    # known_org     = ["a Delaware corporation", "a Kansas corporation", 
+    #                 "an Arizona corporation", "an Illinois corporation",
+    #                 "a California corporation"]
 
     non_info_list = ["Art.", "Art", "Article", "Sec.", "Sect.", "Section", 
                     "Sec", "Part", "Exhibit", "Name:", "name:"]
-
-    punc = [","]
-
-    biz_frag = ["Inc.", "INC.", "Incorp.", "INCORP.", "LLC", "N.A.", "L.L.C.", 
-            "LP", "L.P.", "B.V.", "BV", "N.V.", "NV", "Corp.", "CORP."]
     
     effect_date_signals = ["Effective Date", "Dated", "dated", 
             "effective as of", "Effective as of", "effective",
@@ -85,7 +80,8 @@ class Model(Data):
         self.json_output_path = json_output_path
         self.to_df = to_df
         self.features_obj = Features_Generation(pdf_path=self.pdf_input_path,\
-            page_list=None, convert_to_text=True)
+            page_list=[0,1,2,3,4,-5,-4,-3,-2,-1], convert_to_text=True)
+        self.raw_text = self.features_obj.raw_text
         self.tokenize_words = self.features_obj.tokenize_words
         self.tokenize_raw_words = self.features_obj.tokenize_raw_words
         self.tokenize_original = self.features_obj.tokenize_original
@@ -160,57 +156,6 @@ class Model(Data):
         # return dates
         pass
 
-    def clean_party(self, party_name):
-        party_name = party_name.replace("_", "")
-        return party_name
-
-    def preceding_phrase(self, tokens, indx, phrases):
-        for phrase in phrases:
-            phrase_tokens = phrase.split()
-            i = 1
-            pre_words = []
-            while i <= len(phrase_tokens):
-                pre_words.insert(0, tokens[indx - i])
-                i += 1
-            if phrase_tokens == pre_words:
-                return True
-            else:
-                return False
-    
-    def looks_like_party_name(self, tokens, indx):
-        if tokens[indx].istitle() or tokens[indx].isupper():
-            return True
-        else:
-            return False
-    
-    def capture_party_name(self, tokens, indx, direction):
-        party_name = tokens[indx]
-
-        if direction == "right" and (party_name.istitle() or party_name.isupper()):
-            i = 1
-            while tokens[indx + i].isupper():
-                party_name += " " + tokens[indx + i]
-                i += 1
-            while tokens[indx + i][-1] in self.punc:
-                x = i + 1
-                if tokens[indx + x] in self.biz_frag:
-                    party_name += tokens[indx + i] + " " + tokens[indx + x]
-                i += 1  
-            return party_name
-                
-        if direction == "left":
-            i = 1
-            while tokens[indx - i].isupper() or tokens[indx - i] in self.biz_frag or \
-                    tokens[indx - i][-1] in self.punc:            
-                if tokens[indx - i].isupper() or tokens[indx - i] in self.biz_frag:
-                    party_name = tokens[indx - i] + " " + party_name
-                    i += 1
-                if tokens[indx - i][-1] in self.punc:
-                    x = i + 1
-                    party_name = tokens[indx - x] + tokens[indx - i] + " " + party_name
-                    i += 2
-            return party_name
-
     def extract_parties(self, tokens):
         parties_list = []
         persons_list = []
@@ -218,82 +163,16 @@ class Model(Data):
             # Extract the person's name
             party_name, _ = self._whether_person_name(tokens, indx)
             if party_name != None:
-                party_name = self.clean_party(party_name)
                 party_name.encode('utf-8')
                 persons_list.append(party_name)  
 
-            if self.preceding_phrase(tokens, indx, ["among", "between"]) and self._whether_orgnization_name(tokens, indx):
-                print('yes')
-                party_name = self.capture_party_name(tokens, indx, "right")
-                party_name = clean_party(party_name)
-                party_name.encode('utf-8')
-                parties_list.append(party_name)  
-            
-            if self.preceding_phrase(tokens,indx,["(Exact name of"]) and tokens[indx] == "registrant" and _whether_orgnization_name(tokens, indx - 5):
-                print('yes')
-                party_name = self.capture_party_name(tokens, indx - 5, "left")
-                party_name = self.clean_party(party_name)
-                party_name.encode('utf-8')
-                if party_name.upper() not in (party.upper() for party in parties_list):
-                    parties_list.append(party_name)
-            
-            if self.preceding_phrase(tokens, indx, ['(The']) and tokens[indx] == "Company" and self.subsequent_phrase(tokens,indx,[')'],1) and looks_like_party_name(tokens, indx - 3):
-                party_name = self.capture_party_name(tokens, indx - 3, "left")
-                party_name = self.clean_party(party_name)
-                party_name.encode('utf-8')
-                if party_name.upper() not in (party.upper() for party in parties_list):
-                    parties_list.append(party_name)
+        match_1 = r'([A-Z][a-z]+\s?|\,?)+?\s*(and\s*[A-Z][a-z]+)?(, \bL\.?L\.?C\.?\b|\bL\.?P\.?\b|\bB\.?V\.?\b|\bN\.?V\.?\b|\bInc.\b|\bINC.\b|\bIncorp.\b|\bINCORP.\b|\bN\.A\.\b|\bCorp.\b\bCORP.\b)'
+        match_2 = r'([A-Z][a-z]+\s?|\,?)+?\s*(and\s*[A-Z][a-z]+)?(\s+\bCorporation\b|\bCompany\b|\bBank\b)'
 
-            if (self.preceding_phrase(tokens,indx,['(The']) or self.preceding_phrase(tokens,indx,['(the']) or self.preceding_phrase(tokens,indx,['('])) and tokens[indx] in self.defined_terms:
-                print('yes')
-                if self.preceding_phrase(tokens,indx - 2, self.known_org):
-                    party_name = self.capture_party_name(tokens, indx - 5, "left")
-                    party_name = self.clean_party(party_name)
-                    party_name.encode('utf-8')
-                    if party_name.upper() not in (party.upper() for party in parties_list):
-                        parties_list.append(party_name)
-                elif self.looks_like_party_name(tokens,indx - 3):
-                    party_name = self.capture_party_name(tokens, indx - 3, "left")
-                    party_name = self.clean_party(party_name)
-                    party_name.encode('utf-8')
-                    if party_name.upper() not in (party.upper() for party in parties_list):
-                        parties_list.append(party_name)
-                
+        parties_list.extend(["".join(x) for x in re.findall(match_1, self.raw_text)])
+        parties_list.extend(["".join(x) for x in re.findall(match_2, self.raw_text)])
+        
         return list(set(parties_list)), list(set(persons_list))
-    
-    def preceding_phrase(self, tokens, indx, phrases):
-        for phrase in phrases:
-            phrase_tokens = phrase.split()
-            i = 1
-            pre_words = []
-            while i <= len(phrase_tokens):
-                pre_words.insert(0, tokens[ indx - i])
-                i += 1
-            if phrase_tokens == pre_words:
-                return True
-            else:
-                return False
-
-
-    def _check_trigger_word(self, tokens, indx, trigger_words, direction=-1, step=1):
-        result = None
-        if direction == -1:
-            for trigger in trigger_words:
-                trigger_tokens = nltk.word_tokenize(trigger)
-                target_tokens = tokens[(indx+direction*len(trigger_tokens)):indx]
-
-                if trigger_tokens == target_tokens:
-                    result = True
-                else:
-                    result = False
-        return result
-
-    def _whether_orgnization_name(self, tokens, indx):
-        word = tokens[indx]
-        if word.isupper() or word.istitle():
-            return True
-        else:
-            return False
 
     def _whether_person_name(self, tokens, indx):
         try:
@@ -314,12 +193,7 @@ class Model(Data):
                 return None, indx
         except: 
             return None, indx
-        
-        
-        
-        
 
-                
 
         # model_300_output = OrderedDict([
         #     ("parties", ' '.join(list(subset_parties_df))),
@@ -350,9 +224,12 @@ if __name__ == '__main__':
         raise ValueError(f'unknow argument: \
             {arguments_parser.parse_known_args()[1]}')
     pdf_parser = Model(options.input)
-    print('(the' in pdf_parser.tokenize_original)
-    print(pdf_parser.tokenize_sentences)
+    # print('(the' in pdf_parser.tokenize_original)
     print(pdf_parser.parties, pdf_parser.persons)
+    # with open("sample.txt", "w") as text_file:
+    #     text_file.write(pdf_parser.raw_text)
+
+    # print(pdf_parser.parties, pdf_parser.persons)
 
 
 
