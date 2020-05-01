@@ -1,3 +1,1 @@
-# [Not Completed] Tuesday, a machine learning library for legal documents.
-
-Using machine learning approach to analyze legal documents
+Tuesday, a machine learning library for processing PDF documents.
